@@ -506,9 +506,9 @@
     // ==========================================
     // 8. TODO List (3 Columns)
     // ==========================================
-    const TodoColumn = ({ title, todos, setTodos, inputName, setInputName }) => {
+    const TodoColumn = ({ title, todos, setTodos, inputName, setInputName, loading }) => {
       const handleAdd = () => {
-        if (!inputName.trim()) return;
+        if (!inputName.trim() || loading) return;
         setTodos([...todos, {
           id: Date.now() + Math.random(),
           name: inputName,
@@ -518,10 +518,12 @@
       };
 
       const handleToggle = (id) => {
+        if (loading) return;
         setTodos(todos.map(t => t.id === id ? { ...t, checked: !t.checked } : t));
       };
 
       const handleDelete = (id) => {
+        if (loading) return;
         setTodos(todos.filter(t => t.id !== id));
       };
 
@@ -536,19 +538,20 @@
             <div className="flex bg-slate-100/80 rounded-2xl p-1.5 gap-1 shadow-inner border border-slate-200/50">
               <input
                 type="text"
-                placeholder="タスクを入力..."
+                placeholder={loading ? "同期中..." : "タスクを入力..."}
                 value={inputName}
                 onChange={(e) => setInputName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-                className="flex-1 bg-transparent px-3 py-2 text-slate-700 font-bold focus:outline-none placeholder-slate-400 text-sm"
+                onKeyDown={(e) => !loading && e.key === 'Enter' && handleAdd()}
+                disabled={loading}
+                className="flex-1 bg-transparent px-3 py-2 text-slate-700 font-bold focus:outline-none placeholder-slate-400 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               />
               <button
                 onClick={handleAdd}
-                disabled={!inputName.trim()}
-                className="bg-gradient-to-br from-orange-400 to-coral-500 hover:from-orange-500 hover:to-coral-600 disabled:opacity-50 disabled:cursor-not-allowed text-white w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xl transition-all shadow-sm hover:shadow-md shrink-0"
+                disabled={!inputName.trim() || loading}
+                className={`bg-gradient-to-br from-orange-400 to-coral-500 hover:from-orange-500 hover:to-coral-600 disabled:opacity-50 disabled:cursor-not-allowed text-white w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xl transition-all shadow-sm hover:shadow-md shrink-0 ${loading ? 'animate-pulse' : ''}`}
                 style={{ backgroundImage: 'linear-gradient(to bottom right, #fb923c, #fb7185)' }}
               >
-                ＋
+                {loading ? '⏳' : '＋'}
               </button>
             </div>
 
@@ -602,19 +605,21 @@
       );
     };
 
-    const TodoListTab = ({ todosFutari, setTodosFutari, todosBeni, setTodosBeni, todosKou, setTodosKou }) => {
+    const TodoListTab = ({ todosFutari, setTodosFutari, todosBeni, setTodosBeni, todosKou, setTodosKou, loadingTodos }) => {
       const [inputFutari, setInputFutari] = useState('');
       const [inputBeni, setInputBeni] = useState('');
       const [inputKou, setInputKou] = useState('');
 
       return (
-         <div className="flex flex-col gap-6 h-full p-4 md:p-6 pb-28 md:pb-6 w-full max-w-[1200px] mx-auto overflow-hidden">
-            <h2 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight text-center mt-2 shrink-0">TODO LIST</h2>
+         <div className="flex flex-col gap-6 h-full p-4 md:p-6 pb-28 md:pb-6 w-full max-w-[1200px] mx-auto overflow-hidden relative">
+            <h2 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight text-center mt-2 shrink-0 flex items-center justify-center gap-2">
+              TODO LIST {loadingTodos && <span className="text-sm font-bold text-blue-500 animate-pulse bg-blue-50 px-3 py-1 rounded-full">🔄 同期中...</span>}
+            </h2>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 flex-1 min-h-0 pb-4 overflow-y-auto hide-scrollbar md:overflow-hidden">
-               <TodoColumn title="ふたり" todos={todosFutari} setTodos={setTodosFutari} inputName={inputFutari} setInputName={setInputFutari} />
-               <TodoColumn title="紅" todos={todosBeni} setTodos={setTodosBeni} inputName={inputBeni} setInputName={setInputBeni} />
-               <TodoColumn title="康" todos={todosKou} setTodos={setTodosKou} inputName={inputKou} setInputName={setInputKou} />
+               <TodoColumn title="ふたり" todos={todosFutari} setTodos={setTodosFutari} inputName={inputFutari} setInputName={setInputFutari} loading={loadingTodos} />
+               <TodoColumn title="紅" todos={todosBeni} setTodos={setTodosBeni} inputName={inputBeni} setInputName={setInputBeni} loading={loadingTodos} />
+               <TodoColumn title="康" todos={todosKou} setTodos={setTodosKou} inputName={inputKou} setInputName={setInputKou} loading={loadingTodos} />
             </div>
          </div>
       );
@@ -926,14 +931,16 @@
           if (Array.isArray(data)) {
             setShoppingItems(data);
             
-            // カテゴリの一覧を作成
-            const cats = ['全般'];
-            data.forEach(item => {
-              if (item.category && !cats.includes(item.category)) {
-                cats.push(item.category);
-              }
+            // カテゴリの一覧を作成（既存のカテゴリを保持する）
+            setCategories(prevCats => {
+              const newCats = [...prevCats];
+              data.forEach(item => {
+                if (item.category && !newCats.includes(item.category)) {
+                  newCats.push(item.category);
+                }
+              });
+              return newCats;
             });
-            setCategories(cats);
           }
         } catch (e) {
           console.error('Shopping fetch error:', e);
@@ -942,11 +949,36 @@
         }
       };
 
-      // タブ切り替え時または初回に取得
+      // タブ切り替え時、即時取得および定期取得
       useEffect(() => {
-        if (activeTab === 'shopping') {
-          fetchShopping();
-        }
+        let isFetching = false;
+        const fetchIfActive = async () => {
+          if (activeTab === 'shopping' && !isFetching) {
+            isFetching = true;
+            await fetchShopping();
+            isFetching = false;
+          }
+        };
+
+        fetchIfActive(); // タブ切り替え時に即時実行
+
+        // 30秒バックグラウンド定期取得
+        const refreshInterval = setInterval(fetchIfActive, 30 * 1000);
+        
+        // 画面復帰時の即時取得 (Safari/Chromeのバックグラウンドからの復帰)
+        const handleVisibilityChange = () => {
+          if (document.visibilityState === 'visible') fetchIfActive();
+        };
+        const handleFocus = () => fetchIfActive();
+        
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('focus', handleFocus);
+        
+        return () => {
+          clearInterval(refreshInterval);
+          document.removeEventListener('visibilitychange', handleVisibilityChange);
+          window.removeEventListener('focus', handleFocus);
+        };
       }, [activeTab]);
 
       // --- お買い物リスト保存 ---
@@ -973,7 +1005,7 @@
       ];
 
       const handleAddItem = () => {
-        if (!newItemName.trim()) return;
+        if (!newItemName.trim() || loading) return;
         setShoppingItems([...shoppingItems, {
           id: Date.now(),
           name: newItemName,
@@ -986,7 +1018,7 @@
       };
 
       const handleAddCategory = () => {
-        if (!newCategoryName.trim() || categories.includes(newCategoryName)) return;
+        if (!newCategoryName.trim() || categories.includes(newCategoryName) || loading) return;
         setCategories([...categories, newCategoryName]);
         setActiveCategory(newCategoryName);
         setNewCategoryName('');
@@ -994,6 +1026,7 @@
       };
 
       const handleInsertDate = () => {
+        if (loading) return;
         const dateStr = catDate.replace(/-/g, '/');
         setNewCategoryName(dateStr);
       };
@@ -1051,7 +1084,7 @@
                   <h2 className="text-xl font-black text-slate-800 tracking-tight flex items-center gap-2">
                     <span className="text-2xl drop-shadow-sm">🛒</span> SHOPPING
                   </h2>
-                  {loading && <span className="text-[10px] text-emerald-500 font-bold animate-pulse">Syncing...</span>}
+                  {loading && <span className="text-[10px] text-emerald-500 font-bold animate-pulse bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">🔄 同期中...</span>}
                 </div>
                 <div className="flex items-center gap-1">
                   <select 
@@ -1842,19 +1875,37 @@
         return () => clearTimeout(timer);
       }, [todosFutari, todosBeni, todosKou]);
 
-      // タブ切り替え時に最新化
+      // タブ切り替え時に最新化 & 30秒自動同期および画面復帰時の同期
       useEffect(() => {
-        if (activeTab === 'todo' || activeTab === 'main') {
-          fetchTodos();
-        }
+        let isFetching = false;
+        const fetchIfActive = async () => {
+          if ((activeTab === 'todo' || activeTab === 'main') && !isFetching) {
+            isFetching = true;
+            await fetchTodos();
+            isFetching = false;
+          }
+        };
+
+        fetchIfActive();
+
+        // 30秒バックグラウンド定期取得
+        const refreshInterval = setInterval(fetchIfActive, 30 * 1000);
+        
+        // 画面復帰時の即時取得 (別アプリからのブラウザ復帰、ロック解除など)
+        const handleVisibilityChange = () => {
+          if (document.visibilityState === 'visible') fetchIfActive();
+        };
+        const handleFocus = () => fetchIfActive();
+        
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('focus', handleFocus);
+        
+        return () => {
+          clearInterval(refreshInterval);
+          document.removeEventListener('visibilitychange', handleVisibilityChange);
+          window.removeEventListener('focus', handleFocus);
+        };
       }, [activeTab]);
-      useEffect(() => {
-        const refreshInterval = setInterval(() => {
-          console.log('--- 5-min Auto Refresh ---');
-          fetchTodos(); // ページリロードではなくデータ再取得
-        }, 5 * 60 * 1000);
-        return () => clearInterval(refreshInterval);
-      }, []);
 
       return (
         <AppLayout activeTab={activeTab} setActiveTab={setActiveTab}>
